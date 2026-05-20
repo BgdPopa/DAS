@@ -9,16 +9,22 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Creeaza folderul instance/ daca nu exista
     os.makedirs(INSTANCE_DIR, exist_ok=True)
 
-    # Initializare extensii Flask
     db.init_app(app)
     sess.init_app(app)
 
-    # Creeaza automat tabelele definite in models.py
     with app.app_context():
         db.create_all()
+
+    # Inregistrare blueprints
+    from app.routes.auth_routes import auth_bp
+    from app.routes.ticket_routes import tickets_bp
+    from app.routes.audit_routes import audit_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(tickets_bp)
+    app.register_blueprint(audit_bp)
 
     @app.route("/")
     def index():
@@ -30,31 +36,10 @@ def create_app():
                 <meta charset="utf-8">
                 <title>Deskly AuthX</title>
                 <style>
-                    body {
-                        font-family: Arial, sans-serif;
-                        margin: 40px;
-                        background: #f5f5f5;
-                    }
-                    .card {
-                        background: white;
-                        padding: 24px;
-                        border-radius: 12px;
-                        max-width: 700px;
-                        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-                    }
-                    code {
-                        background: #eee;
-                        padding: 2px 6px;
-                        border-radius: 4px;
-                    }
-                    .badge {
-                        display: inline-block;
-                        padding: 6px 10px;
-                        border-radius: 6px;
-                        background: #ffe0e0;
-                        color: #8a0000;
-                        font-weight: bold;
-                    }
+                    body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+                    .card { background: white; padding: 24px; border-radius: 12px; max-width: 700px; box-shadow: 0 2px 10px rgba(0,0,0,0.08); }
+                    code { background: #eee; padding: 2px 6px; border-radius: 4px; }
+                    .badge { display: inline-block; padding: 6px 10px; border-radius: 6px; background: #ffe0e0; color: #8a0000; font-weight: bold; }
                 </style>
             </head>
             <body>
@@ -68,6 +53,8 @@ def create_app():
                         <li><code>/</code> - pagina principala</li>
                         <li><code>/health</code> - verificare status aplicatie</li>
                         <li><code>/db-check</code> - verificare tabele create in baza de date</li>
+                        <li><code>/register</code> - inregistrare utilizator</li>
+                        <li><code>/login</code> - autentificare</li>
                     </ul>
                 </div>
             </body>

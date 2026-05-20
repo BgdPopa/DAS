@@ -4,18 +4,25 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Deskly AuthX</title>
+
+    <!-- Bootstrap este folosit pentru o interfata curata, fara sa pierdem timp pe CSS complex. -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 
 <nav class="navbar navbar-dark bg-dark px-4 mb-4">
-    <span class="navbar-brand">Deskly AuthX</span>
-    {% if session.user_id %}
-        <div>
+    <a href="/" class="navbar-brand text-decoration-none">Deskly AuthX</a>
+
+    <div>
+        {% if session.user_id %}
             <span class="text-light me-3">{{ session.role }}</span>
             <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-light">Logout</a>
-        </div>
-    {% endif %}
+        {% else %}
+            <!-- Linkurile sunt vizibile doar pentru utilizatorii neautentificati. -->
+            <a href="{{ url_for('auth.register') }}" class="btn btn-sm btn-outline-light me-2">Register</a>
+            <a href="{{ url_for('auth.login') }}" class="btn btn-sm btn-success">Login</a>
+        {% endif %}
+    </div>
 </nav>
 
 <div class="container">
