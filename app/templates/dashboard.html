@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h4>Dashboard Tickets</h4>
+    <a href="{{ url_for('tickets.create') }}" class="btn btn-primary">Ticket nou</a>
+</div>
+
+<form class="mb-3" method="GET" action="{{ url_for('tickets.search') }}">
+    <div class="input-group">
+        <input type="text" name="q" class="form-control" placeholder="Cauta ticket...">
+        <button class="btn btn-outline-secondary" type="submit">Cauta</button>
+    </div>
+</form>
+
+<!-- [VULN] In versiunea initiala, dashboard-ul afiseaza toate ticketele, nu doar pe cele ale utilizatorului curent. -->
+<table class="table table-bordered table-hover bg-white">
+    <thead class="table-dark">
+        <tr>
+            <th>#</th>
+            <th>Titlu</th>
+            <th>Severitate</th>
+            <th>Status</th>
+            <th>Actiuni</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for ticket in tickets %}
+        <tr>
+            <td>{{ ticket.id }}</td>
+            <td>{{ ticket.title }}</td>
+            <td>{{ ticket.severity }}</td>
+            <td>{{ ticket.status }}</td>
+            <td>
+                <a href="{{ url_for('tickets.view', ticket_id=ticket.id) }}" class="btn btn-sm btn-info">Vezi</a>
+                <a href="{{ url_for('tickets.edit', ticket_id=ticket.id) }}" class="btn btn-sm btn-warning">Editeaza</a>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" class="text-center">Nu exista tichete.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

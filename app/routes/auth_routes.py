@@ -75,6 +75,7 @@ def login():
 
         # [VULN] Nu exista rate limiting sau blocare dupa incercari multiple
         session["user_id"] = user.id
+        session["email"] = user.email
         session["role"] = user.role
         session.permanent = True
 

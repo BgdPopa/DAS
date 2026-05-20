@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card p-4 mt-4">
+            <h4 class="mb-3">Ticket nou</h4>
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Titlu</label>
+                    <input type="text" name="title" class="form-control" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Descriere</label>
+                    <textarea name="description" class="form-control" rows="4" required></textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Severitate</label>
+                    <select name="severity" class="form-select">
+                        <option value="LOW">LOW</option>
+                        <option value="MED">MED</option>
+                        <option value="HIGH">HIGH</option>
+                    </select>
+                </div>
+
+                <!-- Ticketul este legat in backend de utilizatorul autentificat prin owner_id. -->
+                <button type="submit" class="btn btn-primary w-100">Creeaza</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card p-4 mt-4">
+            <h4 class="mb-3">Editeaza Ticket #{{ ticket.id }}</h4>
+
+            <!-- [VULN] Formularul poate fi accesat pentru orice ID de ticket, daca utilizatorul este autentificat. -->
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Titlu</label>
+                    <input type="text" name="title" class="form-control" value="{{ ticket.title }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Descriere</label>
+                    <textarea name="description" class="form-control" rows="4" required>{{ ticket.description }}</textarea>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Severitate</label>
+                    <select name="severity" class="form-select">
+                        <option value="LOW" {% if ticket.severity == 'LOW' %}selected{% endif %}>LOW</option>
+                        <option value="MED" {% if ticket.severity == 'MED' %}selected{% endif %}>MED</option>
+                        <option value="HIGH" {% if ticket.severity == 'HIGH' %}selected{% endif %}>HIGH</option>
+                    </select>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Status</label>
+                    <select name="status" class="form-select">
+                        <option value="OPEN" {% if ticket.status == 'OPEN' %}selected{% endif %}>OPEN</option>
+                        <option value="IN_PROGRESS" {% if ticket.status == 'IN_PROGRESS' %}selected{% endif %}>IN_PROGRESS</option>
+                        <option value="RESOLVED" {% if ticket.status == 'RESOLVED' %}selected{% endif %}>RESOLVED</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-warning w-100">Salveaza</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
