@@ -9,3 +9,4 @@ instance/
 .env
 .DS_Store
 .vscode/
+flask_session/
