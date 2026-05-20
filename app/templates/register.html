@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-4">
+        <div class="card p-4 mt-5">
+            <h4 class="mb-3">Inregistrare</h4>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Parola</label>
+                    <!-- [VULN] Nu exista restrictii de complexitate in frontend sau backend -->
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Rol</label>
+                    <select name="role" class="form-select">
+                        <option value="ANALYST">ANALYST</option>
+                        <option value="MANAGER">MANAGER</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success w-100">Creeaza cont</button>
+            </form>
+            <div class="mt-3 text-center">
+                <a href="{{ url_for('auth.login') }}">Am deja cont</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
