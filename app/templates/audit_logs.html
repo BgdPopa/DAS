@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h4 class="mb-3">Audit Logs</h4>
+
+<!-- [VULN] In versiunea initiala, orice utilizator autentificat poate vedea toate logurile aplicatiei. -->
+<table class="table table-bordered table-hover bg-white">
+    <thead class="table-dark">
+        <tr>
+            <th>#</th>
+            <th>Utilizator</th>
+            <th>Actiune</th>
+            <th>Resursa</th>
+            <th>Resursa ID</th>
+            <th>IP</th>
+            <th>Timestamp</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for entry in logs %}
+        <tr>
+            <td>{{ entry.id }}</td>
+            <td>{{ users_by_id.get(entry.user_id, "N/A") }}</td>
+            <td>{{ entry.action }}</td>
+            <td>{{ entry.resource }}</td>
+            <td>{{ entry.resource_id }}</td>
+            <td>{{ entry.ip_address }}</td>
+            <td>{{ entry.timestamp }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="7" class="text-center">Nu exista inregistrari.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<a href="{{ url_for('tickets.dashboard') }}" class="btn btn-secondary">Inapoi</a>
+{% endblock %}
