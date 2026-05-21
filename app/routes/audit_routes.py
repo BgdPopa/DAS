@@ -1,4 +1,6 @@
-from flask import Blueprint, render_template, session, redirect, url_for
+from functools import wraps
+
+from flask import Blueprint, render_template, session, redirect, url_for, flash
 
 from app.models import AuditLog, User
 
@@ -6,19 +8,27 @@ from app.models import AuditLog, User
 audit_bp = Blueprint("audit", __name__, url_prefix="/audit")
 
 
-def audit_login_required():
-    # Verificare simpla pentru ca pagina de audit sa nu fie accesibila fara login.
-    return "user_id" in session
+def manager_required(f):
+    # [SECURE] Doar utilizatorii cu rol MANAGER pot accesa rutele de audit.
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            return redirect(url_for("auth.login"))
+
+        if session.get("role") != "MANAGER":
+            flash("Acces restrictionat. Doar managerii pot vedea logurile.", "danger")
+            return redirect(url_for("tickets.dashboard"))
+
+        return f(*args, **kwargs)
+
+    return decorated
 
 
 @audit_bp.route("/logs")
+@manager_required
 def logs():
-    if not audit_login_required():
-        return redirect(url_for("auth.login"))
-
-    # [VULN] In versiunea vulnerabila, orice utilizator autentificat poate vedea toate logurile.
-    # In versiunea securizata, accesul ar trebui limitat doar pentru rolul MANAGER/Admin.
-    logs = (
+    # [SECURE] Accesul la audit logs este restrictionat la rolul MANAGER.
+    all_logs = (
         AuditLog.query
         .order_by(AuditLog.timestamp.desc())
         .limit(100)
@@ -30,6 +40,6 @@ def logs():
 
     return render_template(
         "audit_logs.html",
-        logs=logs,
+        logs=all_logs,
         users_by_id=users_by_id
     )
