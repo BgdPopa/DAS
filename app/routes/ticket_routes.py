@@ -1,6 +1,7 @@
 from functools import wraps
 
 from flask import Blueprint, request, session, redirect, url_for, render_template, flash
+from sqlalchemy import or_
 
 from app.database import db
 from app.models import Ticket
@@ -22,11 +23,29 @@ def login_required(f):
     return decorated
 
 
+def get_owned_ticket_or_none(ticket_id):
+    # [SECURE] Ticketul este incarcat dupa ID, apoi verificam explicit proprietarul.
+    # Daca ticketul nu apartine utilizatorului curent, accesul este refuzat logic.
+    ticket = Ticket.query.get_or_404(ticket_id)
+
+    if ticket.owner_id != session["user_id"]:
+        log_action(session["user_id"], "UNAUTHORIZED_TICKET_ACCESS", "ticket", ticket_id)
+        return None
+
+    return ticket
+
+
 @tickets_bp.route("/dashboard")
 @login_required
 def dashboard():
-    # [VULN] Returnam toate ticketele, nu doar cele ale utilizatorului curent.
-    tickets = Ticket.query.all()
+    # [SECURE] Utilizatorul vede doar ticketele proprii, nu toate ticketele din baza de date.
+    tickets = (
+        Ticket.query
+        .filter_by(owner_id=session["user_id"])
+        .order_by(Ticket.id.desc())
+        .all()
+    )
+
     return render_template("dashboard.html", tickets=tickets)
 
 
@@ -34,9 +53,13 @@ def dashboard():
 @login_required
 def create():
     if request.method == "POST":
-        title = request.form.get("title")
-        description = request.form.get("description")
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
         severity = request.form.get("severity", "LOW")
+
+        if not title or not description:
+            flash("Titlul si descrierea sunt obligatorii.", "danger")
+            return render_template("create_ticket.html")
 
         ticket = Ticket(
             title=title,
@@ -59,8 +82,12 @@ def create():
 @tickets_bp.route("/<int:ticket_id>")
 @login_required
 def view(ticket_id):
-    # [VULN] Nu verificam daca ticketul apartine utilizatorului curent - IDOR.
-    ticket = Ticket.query.get_or_404(ticket_id)
+    # [SECURE] Prevenim IDOR: doar proprietarul ticketului il poate vedea.
+    ticket = get_owned_ticket_or_none(ticket_id)
+
+    if ticket is None:
+        flash("Nu ai acces la acest ticket.", "danger")
+        return redirect(url_for("tickets.dashboard"))
 
     log_action(session["user_id"], "VIEW_TICKET", "ticket", ticket_id)
 
@@ -70,12 +97,23 @@ def view(ticket_id):
 @tickets_bp.route("/<int:ticket_id>/edit", methods=["GET", "POST"])
 @login_required
 def edit(ticket_id):
-    # [VULN] Orice utilizator autentificat poate edita orice ticket dupa ID - IDOR.
-    ticket = Ticket.query.get_or_404(ticket_id)
+    # [SECURE] Prevenim IDOR: doar proprietarul ticketului il poate edita.
+    ticket = get_owned_ticket_or_none(ticket_id)
+
+    if ticket is None:
+        flash("Nu ai acces la acest ticket.", "danger")
+        return redirect(url_for("tickets.dashboard"))
 
     if request.method == "POST":
-        ticket.title = request.form.get("title")
-        ticket.description = request.form.get("description")
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+
+        if not title or not description:
+            flash("Titlul si descrierea sunt obligatorii.", "danger")
+            return render_template("edit_ticket.html", ticket=ticket)
+
+        ticket.title = title
+        ticket.description = description
         ticket.severity = request.form.get("severity", ticket.severity)
         ticket.status = request.form.get("status", ticket.status)
 
@@ -92,15 +130,27 @@ def edit(ticket_id):
 @tickets_bp.route("/search")
 @login_required
 def search():
-    query = request.args.get("q", "")
+    query = request.args.get("q", "").strip()
 
-    # [VULN] Query concatenat direct - vulnerabil la SQL injection.
-    results = db.session.execute(
-        db.text(
-            f"SELECT * FROM tickets "
-            f"WHERE title LIKE '%{query}%' OR description LIKE '%{query}%'"
+    # [SECURE] Query construit prin SQLAlchemy ORM, nu prin concatenare directa de SQL.
+    # Payload-uri precum ' OR 1=1 -- sunt tratate ca text simplu, nu ca instructiuni SQL.
+    base_query = Ticket.query.filter_by(owner_id=session["user_id"])
+
+    if query:
+        pattern = f"%{query}%"
+        results = (
+            base_query
+            .filter(
+                or_(
+                    Ticket.title.ilike(pattern),
+                    Ticket.description.ilike(pattern)
+                )
+            )
+            .order_by(Ticket.id.desc())
+            .all()
         )
-    ).fetchall()
+    else:
+        results = base_query.order_by(Ticket.id.desc()).all()
 
     log_action(session["user_id"], "SEARCH_TICKETS", "ticket")
 
