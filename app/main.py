@@ -90,5 +90,9 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
-    # [VULN] Debug=True expune stack traces si consola interactiva in browser
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app = create_app()
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        debug=app.config.get("DEBUG", False)
+    )

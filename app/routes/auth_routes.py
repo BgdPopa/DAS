@@ -1,14 +1,17 @@
-import hashlib
+import bcrypt
+import secrets
+from datetime import datetime, timedelta
+
 from flask import Blueprint, request, session, redirect, url_for, render_template, flash
+
 from app.database import db
 from app.models import User, AuditLog, PasswordResetToken
-from datetime import datetime
+
 
 auth_bp = Blueprint("auth", __name__)
 
 
 def log_action(user_id, action, resource=None, resource_id=None):
-    # Inregistreaza fiecare actiune importanta in audit_logs
     entry = AuditLog(
         user_id=user_id,
         action=action,
@@ -20,30 +23,84 @@ def log_action(user_id, action, resource=None, resource_id=None):
     db.session.commit()
 
 
-def md5_hash(password):
-    # [VULN] Parola este hash-uita cu MD5 - algoritm slab, fara salt
-    return hashlib.md5(password.encode()).hexdigest()
+def hash_password(password):
+    # [SECURE] bcrypt genereaza automat salt si aplica un cost computational.
+    password_bytes = password.encode("utf-8")
+    salt = bcrypt.gensalt(rounds=12)
+    return bcrypt.hashpw(password_bytes, salt).decode("utf-8")
+
+
+def check_password(password, password_hash):
+    # [SECURE] Compararea parolei se face prin bcrypt.checkpw.
+    # Daca exista inca hash-uri vechi MD5 in DB, bcrypt poate da eroare; tratam cazul ca login esuat.
+    try:
+        return bcrypt.checkpw(
+            password.encode("utf-8"),
+            password_hash.encode("utf-8")
+        )
+    except ValueError:
+        return False
+
+
+def validate_password(password):
+    # [SECURE] Politica minima de parola pentru versiunea securizata.
+    if not password:
+        return False, "Parola este obligatorie."
+
+    if len(password) < 8:
+        return False, "Parola trebuie sa aiba cel putin 8 caractere."
+
+    if not any(ch.islower() for ch in password):
+        return False, "Parola trebuie sa contina cel putin o litera mica."
+
+    if not any(ch.isupper() for ch in password):
+        return False, "Parola trebuie sa contina cel putin o litera mare."
+
+    if not any(ch.isdigit() for ch in password):
+        return False, "Parola trebuie sa contina cel putin o cifra."
+
+    if not any(not ch.isalnum() for ch in password):
+        return False, "Parola trebuie sa contina cel putin un caracter special."
+
+    weak_passwords = {
+        "password",
+        "password123",
+        "12345678",
+        "qwerty123",
+        "admin123",
+        "test1234"
+    }
+
+    if password.lower() in weak_passwords:
+        return False, "Parola este prea usor de ghicit."
+
+    return True, ""
 
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
         role = request.form.get("role", "ANALYST")
 
-        # [VULN] Nu exista validare de lungime sau complexitate a parolei
+        valid, message = validate_password(password)
+        if not valid:
+            flash(message, "danger")
+            return render_template("register.html")
+
         existing = User.query.filter_by(email=email).first()
         if existing:
-            # [VULN] Mesaj diferit pentru email existent - permite user enumeration
-            flash("Email-ul este deja inregistrat.", "danger")
+            # [SECURE] Mesaj neutru, fara detalii suplimentare despre existenta contului.
+            flash("Nu se poate crea contul cu datele introduse.", "danger")
             return render_template("register.html")
 
         user = User(
             email=email,
-            password_hash=md5_hash(password),
+            password_hash=hash_password(password),
             role=role
         )
+
         db.session.add(user)
         db.session.commit()
 
@@ -57,23 +114,50 @@ def register():
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
 
         user = User.query.filter_by(email=email).first()
 
+        # [SECURE] Mesaj unic pentru cont inexistent si parola gresita.
+        generic_error = "Email sau parola incorecta."
+
         if not user:
-            # [VULN] Mesaj diferit cand userul nu exista - permite user enumeration
-            flash("Contul nu exista.", "danger")
+            flash(generic_error, "danger")
             return render_template("login.html")
 
-        if user.password_hash != md5_hash(password):
-            # [VULN] Mesaj diferit cand parola e gresita - permite user enumeration
-            flash("Parola incorecta.", "danger")
+        # [SECURE] Daca perioada de blocare a expirat, contul este deblocat automat.
+        if user.locked and user.locked_until and user.locked_until <= datetime.utcnow():
+            user.locked = False
+            user.locked_until = None
+            user.failed_login_attempts = 0
+            db.session.commit()
+
+        # [SECURE] Daca userul este inca blocat temporar, nu mai verificam parola.
+        if user.locked and user.locked_until and user.locked_until > datetime.utcnow():
+            flash("Contul este temporar blocat. Incearca din nou mai tarziu.", "danger")
+            return render_template("login.html")
+
+        if not check_password(password, user.password_hash):
+            user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+
+            if user.failed_login_attempts >= 5:
+                user.locked = True
+                user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+
+            db.session.commit()
             log_action(user.id, "LOGIN_FAIL", "auth")
+
+            flash(generic_error, "danger")
             return render_template("login.html")
 
-        # [VULN] Nu exista rate limiting sau blocare dupa incercari multiple
+        # [SECURE] Resetam incercarile esuate dupa autentificare reusita.
+        user.failed_login_attempts = 0
+        user.locked = False
+        user.locked_until = None
+        db.session.commit()
+
+        session.clear()
         session["user_id"] = user.id
         session["email"] = user.email
         session["role"] = user.role
@@ -88,38 +172,45 @@ def login():
 @auth_bp.route("/logout")
 def logout():
     user_id = session.get("user_id")
-    log_action(user_id, "LOGOUT", "auth")
-    # [VULN] Session.clear() nu invalideaza sesiunea server-side complet
+
+    if user_id:
+        log_action(user_id, "LOGOUT", "auth")
+
     session.clear()
+    flash("Ai fost delogat.", "success")
     return redirect(url_for("auth.login"))
 
 
 @auth_bp.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        email = request.form.get("email")
+        email = request.form.get("email", "").strip().lower()
         user = User.query.filter_by(email=email).first()
 
+        # [SECURE] Mesaj neutru pentru a evita user enumeration.
+        generic_message = "Daca adresa exista in sistem, a fost generat un token de resetare."
+
         if not user:
-            # [VULN] Mesaj diferit pentru email inexistent - confirma existenta contului
-            flash("Email-ul nu este inregistrat.", "danger")
+            flash(generic_message, "info")
             return render_template("forgot_password.html")
 
-        # [VULN] Token predictibil generat din email + timestamp trunchiat
-        raw = f"{email}{int(datetime.utcnow().timestamp()) // 100}"
-        token = hashlib.md5(raw.encode()).hexdigest()
+        # [SECURE] Token criptografic random, nu MD5 predictibil.
+        token = secrets.token_urlsafe(32)
 
         reset = PasswordResetToken(
             user_id=user.id,
             token=token,
-            expires_at=None,
+            expires_at=datetime.utcnow() + timedelta(minutes=15),
             used=False
         )
+
         db.session.add(reset)
         db.session.commit()
 
         log_action(user.id, "PASSWORD_RESET_REQUEST", "auth")
-        # In productie s-ar trimite pe email - aici il afisam direct pentru PoC
+
+        # In laborator il afisam ca sa putem testa fluxul.
+        # In productie, token-ul ar trebui trimis prin email.
         flash(f"Token resetare: {token}", "info")
         return render_template("forgot_password.html")
 
@@ -129,18 +220,40 @@ def forgot_password():
 @auth_bp.route("/reset-password", methods=["GET", "POST"])
 def reset_password():
     if request.method == "POST":
-        token = request.form.get("token")
-        new_password = request.form.get("password")
+        token = request.form.get("token", "").strip()
+        new_password = request.form.get("password", "")
 
         reset = PasswordResetToken.query.filter_by(token=token).first()
 
-        if not reset:
-            flash("Token invalid.", "danger")
+        if (
+            not reset
+            or reset.used
+            or reset.expires_at is None
+            or reset.expires_at < datetime.utcnow()
+        ):
+            flash("Token invalid sau expirat.", "danger")
             return render_template("reset_password.html")
 
-        # [VULN] Token-ul nu are expirare si poate fi reutilizat
+        valid, message = validate_password(new_password)
+        if not valid:
+            flash(message, "danger")
+            return render_template("reset_password.html", token=token)
+
         user = User.query.get(reset.user_id)
-        user.password_hash = md5_hash(new_password)
+        if not user:
+            flash("Token invalid sau expirat.", "danger")
+            return render_template("reset_password.html")
+
+        user.password_hash = hash_password(new_password)
+
+        # [SECURE] Token-ul devine one-time use dupa prima utilizare.
+        reset.used = True
+
+        # [SECURE] Dupa resetarea parolei, resetam si starea de lockout.
+        user.failed_login_attempts = 0
+        user.locked = False
+        user.locked_until = None
+
         db.session.commit()
 
         log_action(user.id, "PASSWORD_RESET_SUCCESS", "auth")
